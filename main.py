@@ -16,6 +16,32 @@ battery = 0
 hour = 0
 
 
+def to_number(value):
+    value = float(value)
+    return int(value) if value.is_integer() else value
+
+
+def read_events(data):
+    raw = data.get("random_event") or "none"
+    if isinstance(raw, str):
+        raw = [raw]
+    return {str(e).strip().lower() for e in raw}
+
+
+def is_lecture_hall(entry):
+    name = str(entry.get("type", "")).strip().lower()
+    return name.replace(" ", "_").replace("-", "_") == "lecture_hall"
+
+
+def build_response(buildings, gen):
+    return {
+        "buildings": buildings,
+        "solar": sum(b["solar"] for b in buildings),
+        "battery": sum(b["battery"] for b in buildings),
+        "generator": gen,
+    }
+
+
 def can_discharge(price, has_bat, has_grid, has_gen):
     if not has_bat:
         return False
@@ -31,14 +57,14 @@ def can_discharge(price, has_bat, has_grid, has_gen):
 def solve(data):
     global battery, hour
 
-    event = data.get("random_event", "none")
+    events = read_events(data)
     loads = data["loads"]
-    price = data["grid_price"]
+    price = float(data.get("grid_price", 0))
 
-    has_solar = event != "cloudy_weather"
-    has_grid = event != "grid_failure"
-    has_bat = event != "battery_failure"
-    has_gen = event != "generator_failure"
+    has_solar = "cloudy_weather" not in events
+    has_grid = "grid_failure" not in events
+    has_bat = "battery_failure" not in events
+    has_gen = "generator_failure" not in events
 
     solar_left = SOLAR_CAP if has_solar else 0
     bat_left = battery if can_discharge(price, has_bat, has_grid, has_gen) else 0
@@ -46,10 +72,10 @@ def solve(data):
     buildings = []
 
     for entry in loads:
-        load = entry["load"]
+        load = to_number(entry.get("load", 0))
 
         solar = 0
-        if entry["type"] != "lecture_hall":
+        if not is_lecture_hall(entry):
             solar = min(load, solar_left)
             solar_left -= solar
 
@@ -70,7 +96,7 @@ def solve(data):
     battery += gen
 
     hour += 1
-    return {"buildings": buildings, "generator": gen}
+    return build_response(buildings, gen)
 
 
 def main():
